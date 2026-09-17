@@ -22,14 +22,20 @@ export async function POST(req: NextRequest) {
       const result = await mammoth.extractRawText({ buffer });
       rawText = result.value;
     } else if (file.name.toLowerCase().endsWith('.pdf')) {
-      const pdfParse = (await import('pdf-parse')).default;
+      // Import the internal module path, not the package root — pdf-parse's
+      // main entry file has leftover debug code that tries to open a test
+      // fixture file that doesn't exist once deployed, crashing on every
+      // real upload in serverless environments like Vercel. This path
+      // skips that broken code entirely.
+      const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
       const result = await pdfParse(buffer);
       rawText = result.text;
     } else {
       return NextResponse.json({ error: 'Please upload a .pdf or .docx file.' }, { status: 400 });
     }
   } catch (e) {
-    return NextResponse.json({ error: 'Could not read that file. Try saving it again and re-uploading.' }, { status: 500 });
+    console.error('Resume text extraction failed:', e);
+    return NextResponse.json({ error: 'Could not read that file. Try saving it again and re-uploading. (' + String(e).slice(0, 150) + ')' }, { status: 500 });
   }
 
   if (!rawText || rawText.trim().length < 50) {
