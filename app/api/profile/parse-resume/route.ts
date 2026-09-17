@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '../../../../lib/supabaseServer';
 import { structureResume } from '../../../../lib/gemini';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const supabase = getSupabaseServer();

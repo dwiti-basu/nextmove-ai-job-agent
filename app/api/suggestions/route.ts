@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '../../../lib/supabaseServer';
 import { suggestRoles } from '../../../lib/gemini';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // GET: list this user's current suggestions.
 export async function GET() {

@@ -97,7 +97,7 @@ export default function ProfilePage() {
         setFactBank(data.factBank);
       }
     } catch {
-      setUploadError('Upload failed — check your connection and try again.');
+      setUploadError('Upload failed — this can happen if Google\'s AI service was briefly overloaded and the request ran long. Please try uploading again.');
     }
     setUploading(false);
     e.target.value = '';

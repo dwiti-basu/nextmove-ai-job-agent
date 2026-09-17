@@ -9,8 +9,12 @@ const GEMINI_URL =
 // Retries a Gemini request on transient server-side overload (503) or rate
 // limiting (429) — these are temporary on Google's end, not real failures,
 // so a short backoff-and-retry resolves most of them without the user
-// having to manually try again.
-async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
+// having to manually try again. Capped at 2 retries (not more) to keep the
+// total request time safely within Vercel's function time limit — each
+// retry adds both a wait and another full model call, and stacking too
+// many can cause the platform to kill the request before Gemini even
+// finishes responding.
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2): Promise<Response> {
   let lastResponse: Response | null = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch(url, options);
