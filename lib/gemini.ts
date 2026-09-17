@@ -9,12 +9,9 @@ const GEMINI_URL =
 // Retries a Gemini request on transient server-side overload (503) or rate
 // limiting (429) — these are temporary on Google's end, not real failures,
 // so a short backoff-and-retry resolves most of them without the user
-// having to manually try again. Capped at 2 retries (not more) to keep the
-// total request time safely within Vercel's function time limit — each
-// retry adds both a wait and another full model call, and stacking too
-// many can cause the platform to kill the request before Gemini even
-// finishes responding.
-async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2): Promise<Response> {
+// having to manually try again. 3 retries (4 attempts total) fits safely
+// within the 60-second function budget these routes now have.
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
   let lastResponse: Response | null = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch(url, options);
@@ -28,7 +25,7 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2)
   return lastResponse!;
 }
 
-async function callGemini(prompt: string): Promise<any> {
+async function callGemini(prompt: string, maxRetries?: number): Promise<any> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set in Vercel env vars');
 
@@ -39,7 +36,7 @@ async function callGemini(prompt: string): Promise<any> {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
     })
-  });
+  }, maxRetries);
 
   const body = await res.json();
   const text = body?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -145,29 +142,35 @@ search for themselves, because the title doesn't obviously match their backgroun
 substance does.
 
 Using ONLY the fact bank below, identify:
-1. 5-8 specific job titles worth searching for. Include titles that are a genuine stretch of
+1. 4-5 specific job titles worth searching for. Include titles that are a genuine stretch of
    phrasing but a real match of substance (e.g. someone who founded an AI Centre of Excellence
    inside a large company is also a strong match for "Head of GBS Insights & Analytics" or
    "GCC Transformation Director" — titles that don't share obvious keywords with their resume
    but describe the same real work).
-2. 4-6 specific companies or company types worth proactive outreach, with a concrete reason tied
+2. 3-4 specific companies or company types worth proactive outreach, with a concrete reason tied
    to something in their background (e.g. "FMCG companies building GCCs" if their background is
    FMCG + GCC-building) — name real, plausible companies where you can, not just categories.
 
 Be honest and grounded — do not suggest roles requiring things the fact bank says they don't
 have (see the "EXPLICITLY NOT TRUE" section if present). Favor titles/companies that stretch
-the SEARCH TERMS, not the person's actual qualifications.
+the SEARCH TERMS, not the person's actual qualifications. Keep each rationale to one short
+sentence — brevity matters more than detail here.
 
 Output strictly valid JSON:
 {
-  "suggestedRoles": [{ "title": "...", "rationale": "one sentence, specific to this person's facts" }],
-  "suggestedCompanies": [{ "name": "...", "rationale": "one sentence, specific to this person's facts" }]
+  "suggestedRoles": [{ "title": "...", "rationale": "one short sentence" }],
+  "suggestedCompanies": [{ "name": "...", "rationale": "one short sentence" }]
 }
 
 === FACT BANK ===
-${facts}`;
+${facts.slice(0, 8000)}`;
 
-  return callGemini(prompt);
+  // Only 1 retry (2 attempts total) for this specific call — it asks for a
+  // larger, more complex response than the other Gemini calls, so it's
+  // inherently slower; keeping the retry budget tight here leaves enough
+  // time within the 60-second function limit for the actual generation
+  // itself to finish, rather than spending that budget on retries.
+  return callGemini(prompt, 1);
 }
 
 export async function structureResume(rawText: string): Promise<string> {
