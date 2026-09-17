@@ -1,5 +1,10 @@
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  // Using the "latest" alias rather than a pinned version — Google has
+  // been retiring specific Gemini model versions every few months (2.0-flash
+  // was shut down entirely), and this alias is maintained by Google to
+  // always point at their current recommended fast model, so this app
+  // doesn't need a code update every time they retire a version.
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
 
 async function callGemini(prompt: string): Promise<any> {
   const apiKey = process.env.GEMINI_API_KEY;
