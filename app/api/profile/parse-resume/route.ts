@@ -47,6 +47,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ factBank });
   } catch (e) {
     console.error('Resume structuring failed:', e);
-    return NextResponse.json({ error: 'Resume text was extracted, but structuring it failed. (' + String(e).slice(0, 150) + ')' }, { status: 500 });
+    const errStr = String(e);
+    const friendlyMessage = errStr.includes('503') || errStr.includes('high demand')
+      ? 'Google\'s AI service is temporarily overloaded. This usually clears up within a minute or two — please try uploading again shortly.'
+      : 'Resume text was extracted, but structuring it failed. (' + errStr.slice(0, 150) + ')';
+    return NextResponse.json({ error: friendlyMessage }, { status: 500 });
   }
 }

@@ -6,11 +6,29 @@ const GEMINI_URL =
   // doesn't need a code update every time they retire a version.
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
 
+// Retries a Gemini request on transient server-side overload (503) or rate
+// limiting (429) — these are temporary on Google's end, not real failures,
+// so a short backoff-and-retry resolves most of them without the user
+// having to manually try again.
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
+  let lastResponse: Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.status !== 503 && res.status !== 429) return res;
+    lastResponse = res;
+    if (attempt < maxRetries) {
+      const delayMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  return lastResponse!;
+}
+
 async function callGemini(prompt: string): Promise<any> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set in Vercel env vars');
 
-  const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+  const res = await fetchWithRetry(`${GEMINI_URL}?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -34,7 +52,7 @@ async function callGeminiRaw(prompt: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set in Vercel env vars');
 
-  const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+  const res = await fetchWithRetry(`${GEMINI_URL}?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
