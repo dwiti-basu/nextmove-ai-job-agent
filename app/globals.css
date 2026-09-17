@@ -25,6 +25,7 @@ html, body {
   font-family: 'Inter', -apple-system, sans-serif;
   font-size: 15px;
   line-height: 1.55;
+  scroll-behavior: smooth;
 }
 
 h1, h2, h3, .display {
