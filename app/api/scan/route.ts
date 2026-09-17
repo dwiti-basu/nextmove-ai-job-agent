@@ -16,11 +16,12 @@ export async function POST() {
   const { data: termRows } = await supabase.from('search_terms').select('term');
   const roleTerms = (termRows || []).map(t => t.term);
 
-  const [webJobs, ghJobs, leverJobs] = await Promise.all([
+  const [webResult, ghJobs, leverJobs] = await Promise.all([
     fetchWebSearchJobs(roleTerms),
     fetchGreenhouseJobs(),
     fetchLeverJobs()
   ]);
+  const webJobs = webResult.jobs;
   const allJobs = [...webJobs, ...ghJobs, ...leverJobs];
 
   let inserted = 0;
@@ -35,6 +36,7 @@ export async function POST() {
   return NextResponse.json({
     scanned: allJobs.length,
     inserted,
-    breakdown: { webSearch: webJobs.length, greenhouse: ghJobs.length, lever: leverJobs.length }
+    breakdown: { webSearch: webJobs.length, greenhouse: ghJobs.length, lever: leverJobs.length },
+    webSearchErrors: webResult.errors // if this is non-empty, that's the real reason webSearch is 0
   });
 }

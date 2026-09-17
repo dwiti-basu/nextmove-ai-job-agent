@@ -71,15 +71,17 @@ function looksLikeJobPosting(title: string): boolean {
 // queries (currently 8 * 4 = 32) per run. At the default daily cron run, that's well within
 // the 100/day free quota, with headroom left for manual re-runs. If you widen ROLE_TERMS or
 // JOB_SITES significantly, watch this multiplication — trim one list if you hit the cap.
-export async function fetchWebSearchJobs(roleTerms?: string[]): Promise<RawJob[]> {
+export async function fetchWebSearchJobs(roleTerms?: string[]): Promise<{ jobs: RawJob[]; errors: string[] }> {
   const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
   const cx = process.env.GOOGLE_SEARCH_CX;
   if (!apiKey || !cx) {
-    console.warn('GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX not set — web search sweep skipped. See SETUP_GUIDE.md.');
-    return [];
+    const msg = 'GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX not set — web search sweep skipped. See SETUP_GUIDE.md.';
+    console.warn(msg);
+    return { jobs: [], errors: [msg] };
   }
 
   const results: RawJob[] = [];
+  const errors: string[] = [];
   const queries = buildSearchQueries(roleTerms && roleTerms.length ? roleTerms : DEFAULT_ROLE_TERMS);
 
   for (const query of queries) {
@@ -88,9 +90,18 @@ export async function fetchWebSearchJobs(roleTerms?: string[]): Promise<RawJob[]
       const res = await fetch(url);
       if (!res.ok) {
         if (res.status === 429) {
-          console.warn('Google Custom Search daily quota hit — stopping web sweep for this run.');
+          const msg = 'Google Custom Search daily quota hit — stopping web sweep for this run.';
+          console.warn(msg);
+          errors.push(msg);
           break;
         }
+        // Log and surface the actual error instead of silently skipping —
+        // this is what was hiding an invalid API key / search engine ID /
+        // bad request as a quiet "zero results" instead of a visible error.
+        const errorBody = await res.text();
+        const msg = `Google Custom Search error (status ${res.status}): ${errorBody.slice(0, 300)}`;
+        console.error(msg);
+        if (errors.length < 3) errors.push(msg); // avoid flooding the response with repeats
         continue;
       }
       const data = await res.json();
@@ -106,10 +117,12 @@ export async function fetchWebSearchJobs(roleTerms?: string[]): Promise<RawJob[]
       }
       await new Promise(r => setTimeout(r, 250)); // stay gentle on quota / rate limits
     } catch (e) {
-      console.error(`Web search failed for "${query}":`, e);
+      const msg = `Web search failed for "${query}": ${String(e)}`;
+      console.error(msg);
+      if (errors.length < 3) errors.push(msg);
     }
   }
-  return results;
+  return { jobs: results, errors };
 }
 
 // ============================================================
