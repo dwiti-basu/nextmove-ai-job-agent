@@ -20,6 +20,30 @@ async function callGemini(prompt: string): Promise<any> {
   return JSON.parse(text);
 }
 
+// Plain-text variant — used when the output is a large, free-form block of
+// text (like a whole restructured resume). Wrapping a big multi-line block
+// inside a JSON string value is fragile: even correct model output can fail
+// JSON.parse if any character isn't escaped exactly right. Skipping the
+// JSON wrapper for this kind of output avoids that failure mode entirely.
+async function callGeminiRaw(prompt: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY not set in Vercel env vars');
+
+  const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2 }
+    })
+  });
+
+  const body = await res.json();
+  const text = body?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini API error: ' + JSON.stringify(body).slice(0, 300));
+  return text;
+}
+
 export async function assessRelevance(facts: string, jdText: string, jobTitle: string, company: string) {
   const prompt = `You are honestly assessing job fit for a real candidate. Be direct about gaps — do not oversell.
 
@@ -119,7 +143,7 @@ ${facts}`;
   return callGemini(prompt);
 }
 
-export async function structureResume(rawText: string) {
+export async function structureResume(rawText: string): Promise<string> {
   const prompt = `You are converting a real person's uploaded resume into a structured fact bank.
 
 STRICT RULES:
@@ -127,7 +151,7 @@ STRICT RULES:
    anything — no metrics, dates, titles, or achievements that aren't explicitly stated.
 2. If something is ambiguous or unclear in the source text, phrase it as it was written
    rather than guessing at what it "probably" means.
-3. Organize the output using this exact structure (as plain text, not JSON):
+3. Organize the output using this exact structure, as plain text:
 
 NAME — VERIFIED FACT BANK
 (Only facts listed here should be used to score jobs or tailor a CV.)
@@ -156,12 +180,13 @@ LinkedIn:
 - Leave this section with a placeholder comment telling the person to fill it in
   themselves — you cannot infer what is NOT true from a resume alone.
 
-Output strictly valid JSON: { "factBank": "the full formatted text as described above" }
+Output ONLY the formatted text above. Do not wrap it in JSON, markdown code fences, or any
+commentary before or after it.
 
 === RESUME TEXT ===
 ${rawText}`;
 
-  return callGemini(prompt);
+  return callGeminiRaw(prompt);
 }
 
 export async function draftOutreach(

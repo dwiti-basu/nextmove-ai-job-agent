@@ -43,9 +43,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const structured = await structureResume(rawText.slice(0, 15000));
-    return NextResponse.json({ factBank: structured.factBank });
+    const factBank = await structureResume(rawText.slice(0, 15000));
+    return NextResponse.json({ factBank });
   } catch (e) {
-    return NextResponse.json({ error: 'Resume text was extracted, but structuring it failed. Try again.' }, { status: 500 });
+    console.error('Resume structuring failed:', e);
+    return NextResponse.json({ error: 'Resume text was extracted, but structuring it failed. (' + String(e).slice(0, 150) + ')' }, { status: 500 });
   }
 }
