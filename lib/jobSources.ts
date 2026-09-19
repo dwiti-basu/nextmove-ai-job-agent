@@ -17,10 +17,11 @@ export interface RawJob {
 // suggestions, the scan pulls from the shared `search_terms` table instead
 // (see scan/route.ts) — this array is only the day-one fallback.
 const DEFAULT_ROLE_TERMS = [
-  'Director Data Science',
-  'Head of AI',
-  'VP Data Analytics',
-  'Head of Data Science'
+  'Director AI', 'Head of AI', 'VP AI', 'Director Data Science',
+  'Head of Data Science', 'Director Data and Analytics',
+  'Head of Machine Learning', 'Director Generative AI',
+  'Head of AI Transformation', 'Director Digital Transformation AI',
+  'Head of Supply Chain Digital Transformation', 'Director Supply Chain Analytics'
 ];
 
 // Job platforms to sweep via Google's site: operator — this is what makes
@@ -32,7 +33,7 @@ const JOB_SITES = [
   '' // one unrestricted query per role term too, to catch company career pages directly
 ];
 
-const LOCATION_TERM = 'Bengaluru OR Bangalore OR India';
+const LOCATION_TERM = '(India OR Bengaluru OR Bangalore OR Mumbai OR Pune OR Hyderabad OR Chennai OR Delhi OR Gurugram OR Noida OR remote India)';
 
 // Builds the actual query strings sent to Google Custom Search. Takes the
 // role term list as a parameter (rather than a fixed constant) so it can
@@ -47,20 +48,29 @@ function buildSearchQueries(roleTerms: string[]): string[] {
   return queries;
 }
 
-const TITLE_KEYWORDS = [
-  'director', 'head of', 'vp', 'vice president', 'chief ai', 'chief data',
-  'senior director', 'sr. director', 'sr director'
-];
-const DOMAIN_KEYWORDS = [
-  'ai', 'artificial intelligence', 'data science', 'machine learning',
-  'genai', 'generative ai', 'analytics', 'ml'
-];
+const SENIORITY_RE = /\b(director|vice president|\bvp\b|head of|head,|chief|global head|senior director|sr\.? director)\b/i;
+const DOMAIN_RE = /\b(ai|artificial intelligence|data science|machine learning|\bml\b|genai|generative ai|analytics|data & analytics|data and analytics|ai transformation|digital transformation|supply chain transformation|procurement analytics)\b/i;
+const EXCLUDE_RE = /\b(intern(ship)?|graduate|junior|entry[- ]level|marketing|sales|legal|counsel|customer success|full[- ]stack|rails engineer)\b/i;
+const INDIA_RE = /\b(india|bengaluru|bangalore|mumbai|pune|hyderabad|chennai|delhi|gurugram|gurgaon|noida|remote\s*[-,]?\s*india|india[- ]remote)\b/i;
+const REMOTE_RE = /\b(remote|work from anywhere|distributed)\b/i;
+
+function matchesTargetRole(title: string, description = ''): boolean {
+  const t = title || '';
+  const combined = `${t} ${description}`;
+  // Domain must be evident in the job title; description-only keyword mentions
+  // are too noisy (e.g. unrelated COO roles that mention AI in passing).
+  return SENIORITY_RE.test(t) && DOMAIN_RE.test(t) && !EXCLUDE_RE.test(t);
+}
+
+function matchesIndia(location: string, description = ''): boolean {
+  const loc = location || '';
+  if (INDIA_RE.test(loc)) return true;
+  // Remote is acceptable only when India eligibility is explicit.
+  return /\b(remote|work from anywhere)\b/i.test(loc) && /\bindia\b/i.test(`${loc} ${description}`);
+}
 
 function looksLikeJobPosting(title: string): boolean {
-  const t = title.toLowerCase();
-  const titleMatch = TITLE_KEYWORDS.some(k => t.includes(k));
-  const domainMatch = DOMAIN_KEYWORDS.some(k => t.includes(k));
-  return titleMatch && domainMatch;
+  return matchesTargetRole(title);
 }
 
 // Google Custom Search — free tier: 100 queries/day, no credit card.
@@ -141,15 +151,8 @@ export const LEVER_BOARDS: string[] = [
   // 'example-company-slug',
 ];
 
-const LOCATION_KEYWORDS = ['india', 'bengaluru', 'bangalore', 'remote'];
-
 function matchesFilters(title: string, location: string): boolean {
-  const t = title.toLowerCase();
-  const l = (location || '').toLowerCase();
-  const titleMatch = TITLE_KEYWORDS.some(k => t.includes(k));
-  const domainMatch = DOMAIN_KEYWORDS.some(k => t.includes(k));
-  const locationMatch = LOCATION_KEYWORDS.length === 0 || LOCATION_KEYWORDS.some(k => l.includes(k));
-  return titleMatch && domainMatch && locationMatch;
+  return matchesTargetRole(title) && matchesIndia(location);
 }
 
 export async function fetchGreenhouseJobs(): Promise<RawJob[]> {
@@ -210,18 +213,14 @@ export async function fetchJobDescriptionText(url: string): Promise<string> {
 export async function fetchPublicFeedJobs(): Promise<{ jobs: RawJob[]; errors: string[] }> {
   const jobs: RawJob[] = [];
   const errors: string[] = [];
-  const relevant = (title: string, description = '') => {
-    const text = `${title} ${description}`.toLowerCase();
-    const leadership = /\b(director|head|vice president|\bvp\b|chief|lead|leader|principal)\b/.test(text);
-    const domain = /\b(ai|artificial intelligence|data science|machine learning|\bml\b|genai|generative ai|analytics|data platform|data & analytics)\b/.test(text);
-    return leadership && domain;
-  };
+  const relevant = (title: string, description = '', location = '') =>
+    matchesTargetRole(title, description) && matchesIndia(location, description);
   try {
     const res = await fetch('https://www.arbeitnow.com/api/job-board-api', { next: { revalidate: 1800 } });
     if (!res.ok) throw new Error(`Arbeitnow HTTP ${res.status}`);
     const payload = await res.json();
     for (const j of payload.data || []) {
-      if (relevant(j.title, j.description) && j.url) jobs.push({
+      if (relevant(j.title, j.description, j.location || '') && j.url) jobs.push({
         title: j.title, company: j.company_name || 'Unknown', location: j.location || (j.remote ? 'Remote' : ''),
         link: j.url, source: 'job_board'
       });
@@ -232,7 +231,7 @@ export async function fetchPublicFeedJobs(): Promise<{ jobs: RawJob[]; errors: s
     if (!res.ok) throw new Error(`Remotive HTTP ${res.status}`);
     const payload = await res.json();
     for (const j of payload.jobs || []) {
-      if (relevant(j.title, j.description) && j.url) jobs.push({
+      if (relevant(j.title, j.description, j.candidate_required_location || '') && j.url) jobs.push({
         title: j.title, company: j.company_name || 'Unknown', location: j.candidate_required_location || 'Remote',
         link: j.url, source: 'job_board'
       });
