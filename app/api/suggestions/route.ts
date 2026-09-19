@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '../../../lib/supabaseServer';
-import { suggestRoles } from '../../../lib/gemini';
 
-export const maxDuration = 60;
+export const maxDuration = 15;
+
+// Deterministic fallback: works even when Gemini's free quota is exhausted.
+// Suggestions are target roles/employers, not verified live vacancies.
+function localSuggestions(facts: string) {
+  const f = facts.toLowerCase();
+  const hasSupply = /supply chain|procurement|manufactur|logistics|operations/.test(f);
+  const roles = [
+    { title: 'Director / Head of AI & Machine Learning', rationale: 'Targets enterprise AI leadership, model delivery, and team leadership supported by your profile.' },
+    { title: 'Director / Head of Data Science', rationale: 'Aligns with applied data science leadership and delivering analytics or ML solutions.' },
+    { title: 'Director / Head of Data & Analytics', rationale: 'Relevant where the remit combines analytics strategy, delivery, governance, and stakeholder leadership.' },
+    { title: 'Head of Generative AI / AI Transformation', rationale: 'Targets organizations scaling GenAI use cases, governance, and production deployment.' },
+    { title: 'AI & Data Strategy / Transformation Director', rationale: 'Targets roles connecting business strategy with enterprise AI and data execution.' },
+    ...(hasSupply ? [{ title: 'Director / Head of Supply Chain AI & Digital Transformation', rationale: 'Connects AI and analytics leadership with supply-chain, procurement, or operations experience.' }] : []),
+    { title: 'AI / Data Science Consulting Director', rationale: 'Relevant for consulting roles leading AI/data programs, client delivery, and multidisciplinary teams.' },
+  ];
+  const companies = [
+    { name: 'Accenture', rationale: 'Target for AI, data, supply-chain transformation, and consulting leadership opportunities in India.' },
+    { name: 'Deloitte India', rationale: 'Target for enterprise AI, analytics, and transformation consulting roles.' },
+    { name: 'Tata Consultancy Services (TCS)', rationale: 'Target for AI, data science, and enterprise transformation leadership roles.' },
+    { name: 'Wipro', rationale: 'Target for AI, analytics, and digital transformation leadership roles.' },
+    { name: 'Infosys / Infosys Consulting', rationale: 'Target for AI, data, and business transformation leadership opportunities.' },
+    { name: 'Capgemini India', rationale: 'Target for AI, data, and supply-chain transformation leadership roles.' },
+    { name: 'Large Indian enterprises in manufacturing, FMCG, and logistics', rationale: 'Target industry employers where AI/data leadership can support operations and supply-chain outcomes.' },
+  ];
+  return { suggestedRoles: roles, suggestedCompanies: companies };
+}
 
 // GET: list this user's current suggestions.
 export async function GET() {
@@ -31,7 +56,8 @@ export async function POST() {
   const factBank = profile?.fact_bank;
   if (!factBank || !String(factBank).trim()) return NextResponse.json({ error: 'Please complete and save your profile first.' }, { status: 400 });
 
-  const result = await suggestRoles(String(factBank));
+  // No Gemini call: deterministic suggestions avoid quota failures.
+  const result = localSuggestions(String(factBank));
   if (!result || (!Array.isArray(result.suggestedRoles) && !Array.isArray(result.suggestedCompanies))) {
     return NextResponse.json({ error: 'AI returned an unexpected response. Please try again.' }, { status: 502 });
   }
