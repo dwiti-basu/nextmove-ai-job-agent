@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [suggesting, setSuggesting] = useState(false);
+  const [suggestionMessage, setSuggestionMessage] = useState('');
   const [generating, setGenerating] = useState<string | null>(null);
   const [newCompany, setNewCompany] = useState('');
   const [newWhy, setNewWhy] = useState('');
@@ -93,9 +94,16 @@ export default function Dashboard() {
 
   async function generateSuggestions() {
     setSuggesting(true);
-    await fetch('/api/suggestions', { method: 'POST' });
-    setSuggesting(false);
-    await loadAll();
+    setSuggestionMessage('');
+    try {
+      const res = await fetch('/api/suggestions', { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+      await loadAll();
+      setSuggestionMessage(`Generated ${body.added || 0} suggestions.`);
+    } catch (e) {
+      setSuggestionMessage(e instanceof Error ? e.message : 'Could not generate suggestions. Please try again.');
+    } finally { setSuggesting(false); }
   }
 
   async function actOnSuggestion(id: string, action: 'accept' | 'dismiss') {
@@ -126,6 +134,7 @@ export default function Dashboard() {
       <button className="btn btn-quiet" onClick={generateSuggestions} disabled={suggesting} style={{ marginBottom: 16 }}>
         {suggesting ? 'Thinking…' : 'Suggest roles and companies for me'}
       </button>
+      {suggestionMessage && <p className="section-sub" role="status">{suggestionMessage}</p>}
 
       {suggestions.length > 0 && (
         <div style={{ marginBottom: 8 }}>

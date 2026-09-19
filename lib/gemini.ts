@@ -136,25 +136,17 @@ ${jdText}`;
 }
 
 export async function suggestRoles(facts: string) {
-  const prompt = `You are a career strategist studying a candidate's real work history to identify
-roles and companies they should actively be targeting — including ones they might not think to
-search for themselves, because the title doesn't obviously match their background even though the
-substance does.
+  const prompt = `You are a practical India-focused executive career strategist. Recommend only roles plausibly supported by the candidate's fact bank.
 
-Using ONLY the fact bank below, identify:
-1. 4-5 specific job titles worth searching for. Include titles that are a genuine stretch of
-   phrasing but a real match of substance (e.g. someone who founded an AI Centre of Excellence
-   inside a large company is also a strong match for "Head of GBS Insights & Analytics" or
-   "GCC Transformation Director" — titles that don't share obvious keywords with their resume
-   but describe the same real work).
-2. 3-4 specific companies or company types worth proactive outreach, with a concrete reason tied
-   to something in their background (e.g. "FMCG companies building GCCs" if their background is
-   FMCG + GCC-building) — name real, plausible companies where you can, not just categories.
+Candidate preferences: India is the primary location; include remote roles explicitly open to candidates in India. Prioritize Bengaluru, Mumbai, Delhi NCR, Hyderabad, Pune, Chennai, and other Indian locations. Do not suggest overseas-only jobs or internships.
 
-Be honest and grounded — do not suggest roles requiring things the fact bank says they don't
-have (see the "EXPLICITLY NOT TRUE" section if present). Favor titles/companies that stretch
-the SEARCH TERMS, not the person's actual qualifications. Keep each rationale to one short
-sentence — brevity matters more than detail here.
+Target seniority: Director, Senior Director, VP, Head, senior practice/consulting leadership. A senior manager role is acceptable only when the remit is clearly enterprise-wide or leadership-level.
+
+Relevant role families: AI/ML/GenAI leadership, Data Science, Data & Analytics, Enterprise AI/AI transformation, digital transformation involving AI/data, and Supply Chain AI/digital transformation. Include adjacent strategy/consulting roles only when the fact bank supports the responsibilities.
+
+Exclude: internships, entry-level roles, unrelated marketing/sales/customer success, infrastructure-only roles, software engineering individual-contributor roles, and roles requiring a substantially different career track. Do not treat a title word like “Head”, “Lead”, or “Director” alone as evidence of fit.
+
+Using ONLY the fact bank below, return 5-7 specific role titles and 5-8 plausible India-based employers or employer categories. Make rationales concrete and grounded in the candidate's experience. Do not claim a company currently has an opening; these are target employers, not verified vacancies. Avoid duplicate or near-duplicate suggestions.
 
 Output strictly valid JSON:
 {
@@ -164,12 +156,6 @@ Output strictly valid JSON:
 
 === FACT BANK ===
 ${facts.slice(0, 8000)}`;
-
-  // Only 1 retry (2 attempts total) for this specific call — it asks for a
-  // larger, more complex response than the other Gemini calls, so it's
-  // inherently slower; keeping the retry budget tight here leaves enough
-  // time within the 60-second function limit for the actual generation
-  // itself to finish, rather than spending that budget on retries.
   return callGemini(prompt, 1);
 }
 
