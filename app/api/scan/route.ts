@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabaseServer';
-import { fetchGreenhouseJobs, fetchLeverJobs, fetchWebSearchJobs } from '../../../lib/jobSources';
+import { fetchGreenhouseJobs, fetchLeverJobs, fetchWebSearchJobs, fetchPublicFeedJobs } from '../../../lib/jobSources';
 
 export const maxDuration = 60;
 
@@ -14,15 +14,12 @@ export async function POST() {
   // Pull the shared, growing list of role terms — built from suggestions
   // people have accepted — instead of a fixed list baked into code.
   const { data: termRows } = await supabase.from('search_terms').select('term');
-  const roleTerms = (termRows || []).map(t => t.term);
-
-  const [webResult, ghJobs, leverJobs] = await Promise.all([
-    fetchWebSearchJobs(roleTerms),
-    fetchGreenhouseJobs(),
-    fetchLeverJobs()
+  const roleTerms = (termRows || []).map(t => t.term).filter(Boolean);
+  const [webResult, ghJobs, leverJobs, publicResult] = await Promise.all([
+    fetchWebSearchJobs(roleTerms), fetchGreenhouseJobs(), fetchLeverJobs(), fetchPublicFeedJobs()
   ]);
   const webJobs = webResult.jobs;
-  const allJobs = [...webJobs, ...ghJobs, ...leverJobs];
+  const allJobs = [...webJobs, ...ghJobs, ...leverJobs, ...publicResult.jobs];
 
   let inserted = 0;
   for (const job of allJobs) {
@@ -36,7 +33,7 @@ export async function POST() {
   return NextResponse.json({
     scanned: allJobs.length,
     inserted,
-    breakdown: { webSearch: webJobs.length, greenhouse: ghJobs.length, lever: leverJobs.length },
-    webSearchErrors: webResult.errors // if this is non-empty, that's the real reason webSearch is 0
+    breakdown: { webSearch: webJobs.length, greenhouse: ghJobs.length, lever: leverJobs.length, publicFeeds: publicResult.jobs.length },
+    errors: [...webResult.errors, ...publicResult.errors]
   });
 }

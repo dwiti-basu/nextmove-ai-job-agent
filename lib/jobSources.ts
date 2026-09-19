@@ -204,3 +204,39 @@ export async function fetchJobDescriptionText(url: string): Promise<string> {
     .trim();
   return text.slice(0, 12000);
 }
+
+// Public job feeds that do not require Google Custom Search credentials.
+// These feeds are supplementary and may emphasize remote/international roles.
+export async function fetchPublicFeedJobs(): Promise<{ jobs: RawJob[]; errors: string[] }> {
+  const jobs: RawJob[] = [];
+  const errors: string[] = [];
+  const relevant = (title: string, description = '') => {
+    const text = `${title} ${description}`.toLowerCase();
+    const leadership = /\b(director|head|vice president|\bvp\b|chief|lead|leader|principal)\b/.test(text);
+    const domain = /\b(ai|artificial intelligence|data science|machine learning|\bml\b|genai|generative ai|analytics|data platform|data & analytics)\b/.test(text);
+    return leadership && domain;
+  };
+  try {
+    const res = await fetch('https://www.arbeitnow.com/api/job-board-api', { next: { revalidate: 1800 } });
+    if (!res.ok) throw new Error(`Arbeitnow HTTP ${res.status}`);
+    const payload = await res.json();
+    for (const j of payload.data || []) {
+      if (relevant(j.title, j.description) && j.url) jobs.push({
+        title: j.title, company: j.company_name || 'Unknown', location: j.location || (j.remote ? 'Remote' : ''),
+        link: j.url, source: 'job_board'
+      });
+    }
+  } catch (e) { errors.push(`Arbeitnow feed: ${String(e)}`); }
+  try {
+    const res = await fetch('https://remotive.com/api/remote-jobs?limit=100', { next: { revalidate: 1800 } });
+    if (!res.ok) throw new Error(`Remotive HTTP ${res.status}`);
+    const payload = await res.json();
+    for (const j of payload.jobs || []) {
+      if (relevant(j.title, j.description) && j.url) jobs.push({
+        title: j.title, company: j.company_name || 'Unknown', location: j.candidate_required_location || 'Remote',
+        link: j.url, source: 'job_board'
+      });
+    }
+  } catch (e) { errors.push(`Remotive feed: ${String(e)}`); }
+  return { jobs, errors };
+}
